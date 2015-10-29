@@ -30,11 +30,10 @@ namespace IronGitHub
 
         public GitHubApiContext Context { get; private set; }
 
-        protected HttpWebRequest CreateRequest(string path, IDictionary<string, string> parameters = null)
+        protected HttpWebRequest CreateRequest(string uriString, string path, IDictionary<string, string> parameters = null)
         {
             Context.Authorization.CheckRateLimit();
-
-            var uriString = "https://" + Context.Configuration.Domain + path;
+            
             if (parameters != null)
             {
                 var separated = false;
@@ -51,7 +50,7 @@ namespace IronGitHub
                     {
                         uriString += "&";
                     }
-                    uriString += string.Format("{0}={1}", pair.Key, Uri.EscapeDataString(pair.Value));
+                    uriString += $"{pair.Key}={Uri.EscapeDataString(pair.Value)}";
                 }
             }
             var uri = new Uri(uriString);
@@ -64,6 +63,11 @@ namespace IronGitHub
             request.UserAgent = Context.Configuration.UserAgent;
             request.KeepAlive = false;
             return request;
+        }
+
+        protected HttpWebRequest CreateRequest(string path, IDictionary<string, string> parameters = null)
+        {
+            return CreateRequest("https://" + Context.Configuration.Domain + path, path, parameters);
         }
 
         protected void OnRequestCompleted(HttpWebResponse response)
@@ -118,10 +122,24 @@ namespace IronGitHub
             requestStream.WriteAsJson(body);
         }
 
+        async protected Task SendAsBinary(HttpWebRequest request, string contentType, byte[] body)
+        {
+            request.ContentType = contentType;
+            var requestStream = await request.GetRequestStreamAsync().ConfigureAwait(false);
+            requestStream.Write(body, 0, body.Length);
+        }
+        
         async protected Task<ApiResponse<TResult>> PostAsJson<TPost, TResult>(HttpWebRequest request, TPost body)
         {
             request.Method = POST;
             await SendAsJson(request, body);
+            return await Complete<TResult>(request);
+        }
+
+        async protected Task<ApiResponse<TResult>> PostAsBinaryForJson<TResult>(HttpWebRequest request, string contentType, byte[] body)
+        {
+            request.Method = POST;
+            await SendAsBinary(request, contentType, body);
             return await Complete<TResult>(request);
         }
 
